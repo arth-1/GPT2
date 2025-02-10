@@ -153,12 +153,40 @@ class GPT(nn.Module):
     
 
 
+
+# import tiktoken
+# enc = tiktoken.get_encoding('gpt2')
+# with open('input.txt', 'r') as f:
+#     text = f.read()
+# text=text[:100]
+# tokens = enc.encode(text)
+# B = 4  
+# T = min(32, (len(tokens) - 1) // B)  # Now T is computed correctlybuf= torch.tensor(tokens[:B*T + 1])
+# buf = torch.tensor(tokens[:B * T + 1])
+# x= buf[:-1].view(B,T)
+# y= buf[1:].view(B,T)
+
+# model = GPT(GPTConfig())
+# model.to('cuda')
+# logits= model(x)
+
+# print(logits.shape)
+# import sys; sys.exit(0)
+
+#autodetect device
+device = "cpu"
+if torch.cuda.is_available():
+    device="cuda"
+elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    device = "mps"
+print(f"using device: {device}")
+
 num_return_sequences = 5
 max_length = 30
 
-model = GPT.from_pretrained('gpt2')
+model = GPT(GPTConfig())
 model.eval()
-model.to('cuda')
+model.to(device)
 
 #prefix tokens  
 import tiktoken
