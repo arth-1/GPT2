@@ -298,8 +298,9 @@ torch.set_float32_matmul_precision("medium")
 
 #create model
 model = GPT(GPTConfig())
-model.to(device)
-model = torch.compile(model)
+use_compile = False # torch.compile interferes with HellaSwag eval and Generation. TODO fix
+if use_compile:
+    model = torch.compile(model)
 
 import math
 
@@ -347,7 +348,7 @@ for step in range(max_steps):
             for _ in range(val_loss_steps):
                 x, y = val_loader.next_batch()
                 x, y = x.to(device), y.to(device)
-                with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                with torch.autocast(device_type=device, dtype=torch.float16):
                     logits, loss = model(x, y)
                 loss = loss / val_loss_steps
                 val_loss_accum += loss.detach()
@@ -367,7 +368,7 @@ for step in range(max_steps):
             torch.save(checkpoint, checkpoint_path)
     
     # once in a while evaluate hellaswag
-    if (step % 250 == 0 or last_step):
+    if (step % 250 == 0 or last_step) and (not use_compile):
         num_correct_norm = 0
         num_total = 0
         for i, example in enumerate(iterate_examples("val")):
@@ -378,7 +379,7 @@ for step in range(max_steps):
             mask = mask.to(device)
             # get the logits
             with torch.no_grad():
-                with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                with torch.autocast(device_type=device, dtype=torch.float16):
                     logits, loss = model(tokens)
                 pred_norm = get_most_likely_row(tokens, mask, logits)
             num_total += 1
@@ -389,7 +390,7 @@ for step in range(max_steps):
             f.write(f"{step} hella {acc_norm:.4f}\n")
     
     # once in a while generate from the model (except step 0, which is noise)
-    if ((step > 0 and step % 250 == 0) or last_step):
+    if ((step > 0 and step % 250 == 0) or last_step) and (not use_compile):
         model.eval()
         num_return_sequences = 4
         max_length = 32
@@ -402,7 +403,7 @@ for step in range(max_steps):
         while xgen.size(1) < max_length:
             # forward the model to get the logits
             with torch.no_grad():
-                with torch.autocast(device_type=device, dtype=torch.bfloat16):
+                with torch.autocast(device_type=device, dtype=torch.float16):
                     logits, loss = model(xgen) # (B, T, vocab_size)
                 # take the logits at the last position
                 logits = logits[:, -1, :] # (B, vocab_size)
@@ -432,7 +433,7 @@ for step in range(max_steps):
     for micro_step in range(grad_accum_steps):
         x,y = train_loder.next_batch()
         x,y = x.to(device), y.to(device)
-        with torch.autocast(device_type=device, dtype=torch.bfloat16):
+        with torch.autocast(device_type=device, dtype=torch.float16):
             logits, loss = model(x,y)
         loss = loss / grad_accum_steps
         loss_accum += loss.detach()
@@ -467,7 +468,7 @@ enc = tiktoken.get_encoding('gpt2')
 tokens = enc.encode("Hello I love LLMs, ")
 tokens = torch.tensor(tokens, dtype=torch.long) #(token size,)
 tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) #(5, token size)
-x = tokens.to('cuda')
+x = tokens.to(device)
 
 #generate righgt now x is (B,T) , B =5, T=token size
 torch.manual_seed(42)
